@@ -7,7 +7,6 @@
     --blue-600: #2563eb;
     --white-10: rgba(255, 255, 255, 0.1);
     --gray-900-50: rgba(17, 24, 39, 0.5);
-    --canvas-bg: #111827;
 }
 
 body {
@@ -29,17 +28,16 @@ canvas {
     touch-action: none;
 }
 
-/* Sliding Panel Logic */
 .bottom-panel {
     position: fixed;
     bottom: 0;
     left: 50%;
     z-index: 10;
     transition: transform 0.3s ease-in-out;
-    transform: translate(-50%, 100%); /* Start hidden */
+    transform: translate(-50%, 100%);
 }
 .bottom-panel.open {
-    transform: translate(-50%, 0); /* Slide in */
+    transform: translate(-50%, -1.5rem);
 }
 
 .panel-content {
@@ -73,24 +71,24 @@ canvas {
 
 .left-panel {
     left: 1.5rem;
-    transform: translate(-150%, -50%); /* Start hidden */
+    transform: translate(-150%, -50%);
     opacity: 0;
     pointer-events: none;
 }
 .left-panel.open {
-    transform: translate(0, -50%); /* Slide in */
+    transform: translate(0, -50%);
     opacity: 1;
     pointer-events: auto;
 }
 
 .right-panel {
     right: 1.5rem;
-    transform: translate(100%, -50%); /* Start hidden */
+    transform: translate(100%, -50%);
     opacity: 0;
     pointer-events: none;
 }
 .right-panel.open {
-    transform: translate(0, -50%); /* Slide in */
+    transform: translate(0, -50%);
     opacity: 1;
     pointer-events: auto;
 }
@@ -120,7 +118,6 @@ canvas {
     border-radius: 9999px;
 }
 
-/* Toggle Buttons for panels */
 .panel-toggle {
     position: fixed;
     z-index: 20;
@@ -251,4 +248,92 @@ input[type="range"] {
 input[type="range"]:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* Styles for Custom Context Menu */
+.context-menu {
+    position: fixed;
+    z-index: 100;
+    background-color: rgba(41, 51, 65, 0.8);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    border: 1px solid var(--white-10);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    gap: 1rem;
+    transform: translate(-50%, -50%); /* Center on cursor */
+}
+
+.context-menu-slider {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.context-menu-value {
+    font-size: 12px;
+    background-color: var(--gray-900-50);
+    padding: 2px 6px;
+    border-radius: 4px;
+    min-width: 20px;
+    text-align: center;
+}
+
+.context-menu-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.context-menu-buttons button {
+    background-color: transparent;
+    border: none;
+    padding: 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.context-menu-buttons button:hover {
+    background-color: var(--white-10);
+}
+
+.context-menu-buttons button.active {
+    background-color: var(--blue-600);
+}
+
+/* Vertical slider style */
+.vertical-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 80px;
+    height: 6px;
+    background: var(--gray-800);
+    outline: none;
+    border-radius: 3px;
+    transform: rotate(-90deg);
+}
+
+.vertical-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--white);
+    cursor: pointer;
+    border-radius: 50%;
+}
+
+.vertical-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: var(--white);
+    cursor: pointer;
+    border-radius: 50%;
 }

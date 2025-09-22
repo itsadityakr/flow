@@ -1,25 +1,69 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import "./index.css";
 
-// Main App Component
+// Import icons
+import penIcon from "./assets/icons/pen.svg";
+import strokeMoveIcon from "./assets/icons/stroke-move.svg";
+import lassoIcon from "./assets/icons/lasso.svg";
+import panIcon from "./assets/icons/pan.svg";
+import brushSizeIcon from "./assets/icons/brush-size.svg";
+import brushEraserIcon from "./assets/icons/brush-eraser.svg";
+import strokeEraserIcon from "./assets/icons/stroke-eraser.svg";
+import undoIcon from "./assets/icons/undo.svg";
+import redoIcon from "./assets/icons/redo.svg";
+
+const LOCAL_STORAGE_KEY = "drawing-board-data";
+
 export default function App() {
     const canvasRef = useRef(null);
     const contextRef = useRef(null);
 
+    // Load initial state from localStorage or use defaults
     const [tool, setTool] = useState("pen");
+    const [drawingHistory, setDrawingHistory] = useState(() => {
+        try {
+            const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+            return saved ? JSON.parse(saved).drawingHistory : [];
+        } catch (error) {
+            console.warn(error);
+            return [];
+        }
+    });
+    const [historyIndex, setHistoryIndex] = useState(() => {
+        try {
+            const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+            return saved ? JSON.parse(saved).historyIndex : -1;
+        } catch (error) {
+            console.warn(error);
+            return -1;
+        }
+    });
+    const [canvasColor, setCanvasColor] = useState(() => {
+        try {
+            const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+            return saved ? JSON.parse(saved).canvasColor : "#111827";
+        } catch (error) {
+            console.warn(error);
+            return "#111827";
+        }
+    });
+    const [panOffset, setPanOffset] = useState(() => {
+        try {
+            const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+            return saved ? JSON.parse(saved).panOffset : { x: 0, y: 0 };
+        } catch (error) {
+            console.warn(error);
+            return { x: 0, y: 0 };
+        }
+    });
+
     const [color, setColor] = useState("#FFFFFF");
-    const [canvasColor, setCanvasColor] = useState("#111827");
     const [strokeWidth, setStrokeWidth] = useState(5);
-
-    const [drawingHistory, setDrawingHistory] = useState([]);
-    const [historyIndex, setHistoryIndex] = useState(-1);
     const [tempDrawingHistory, setTempDrawingHistory] = useState(null);
-
     const [highlightedStrokeId, setHighlightedStrokeId] = useState(null);
     const [selectedStrokeIds, setSelectedStrokeIds] = useState([]);
     const [lassoPath, setLassoPath] = useState(null);
 
-    // State for panel visibility
     const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true);
     const [isBottomPanelOpen, setIsBottomPanelOpen] = useState(true);
     const isLeftPanelManuallyControlled = useRef(false);
@@ -32,7 +76,15 @@ export default function App() {
     const dragStartDataRef = useRef(null);
     const startPanPointRef = useRef({ x: 0, y: 0 });
 
-    const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+    useEffect(() => {
+        const stateToSave = {
+            drawingHistory,
+            historyIndex,
+            canvasColor,
+            panOffset,
+        };
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(stateToSave));
+    }, [drawingHistory, historyIndex, canvasColor, panOffset]);
 
     const getPointerCoords = (event) => {
         const canvas = canvasRef.current;
@@ -206,7 +258,7 @@ export default function App() {
     ]);
 
     useEffect(() => {
-        document.body.style.setProperty("--canvas-bg", canvasColor);
+        document.body.style.backgroundColor = canvasColor;
     }, [canvasColor]);
 
     useEffect(() => {
@@ -240,6 +292,7 @@ export default function App() {
 
     const handleToggleBottomPanel = () => setIsBottomPanelOpen((prev) => !prev);
 
+    // UPDATED: handlePointerDown for new logic
     const handlePointerDown = (event) => {
         if (event.button === 1 || (tool === "hand" && event.button === 0)) {
             isPanningRef.current = true;
@@ -247,6 +300,7 @@ export default function App() {
             canvasRef.current.style.cursor = "grabbing";
             return;
         }
+
         const coords = getPointerCoords(event);
         const transformedCoords = {
             x: coords.x - panOffset.x,
@@ -254,91 +308,126 @@ export default function App() {
         };
         const currentHistory = drawingHistory.slice(0, historyIndex + 1);
 
-        if (tool === "move") {
-            const strokeToSelect = getStrokeAtPoint(
-                transformedCoords,
-                currentHistory
-            );
-            if (strokeToSelect) {
-                setSelectedStrokeIds([strokeToSelect.id]);
-                isDraggingSelectionRef.current = true;
-                const originalStrokes = new Map();
-                originalStrokes.set(
-                    strokeToSelect.id,
-                    JSON.parse(JSON.stringify(strokeToSelect.points))
+        // LOGIC FOR PEN TOOL
+        if (tool === "pen") {
+            if (event.button === 0 || event.button === 2) {
+                // Handle left and right click
+                isDrawingRef.current = true;
+                if (!isLeftPanelManuallyControlled.current) {
+                    setIsLeftPanelOpen(false);
+                }
+                const actionTool = event.button === 2 ? "brush-eraser" : "pen"; // Right-click (2) erases
+                const newPath = {
+                    id: crypto.randomUUID(),
+                    points: [transformedCoords],
+                    color,
+                    strokeWidth,
+                    tool: actionTool,
+                };
+                const newHistory = [...currentHistory, newPath];
+                setDrawingHistory(newHistory);
+                setHistoryIndex(currentHistory.length);
+                return;
+            }
+        }
+
+        // LOGIC FOR ERASER TOOL
+        else if (tool === "brush-eraser") {
+            if (event.button === 0) {
+                // Only handle left-click
+                isDrawingRef.current = true;
+                if (!isLeftPanelManuallyControlled.current) {
+                    setIsLeftPanelOpen(false);
+                }
+                const newPath = {
+                    id: crypto.randomUUID(),
+                    points: [transformedCoords],
+                    color,
+                    strokeWidth,
+                    tool: "brush-eraser",
+                };
+                const newHistory = [...currentHistory, newPath];
+                setDrawingHistory(newHistory);
+                setHistoryIndex(currentHistory.length);
+                return;
+            }
+            // On right-click with eraser, do nothing.
+            if (event.button === 2) {
+                return;
+            }
+        }
+
+        // Logic for other tools on left-click
+        if (event.button === 0) {
+            if (tool === "move") {
+                const strokeToSelect = getStrokeAtPoint(
+                    transformedCoords,
+                    currentHistory
                 );
-                dragStartDataRef.current = {
-                    startMouse: transformedCoords,
-                    originalStrokes,
-                };
-            } else {
-                setSelectedStrokeIds([]);
+                if (strokeToSelect) {
+                    setSelectedStrokeIds([strokeToSelect.id]);
+                    isDraggingSelectionRef.current = true;
+                    const originalStrokes = new Map();
+                    originalStrokes.set(
+                        strokeToSelect.id,
+                        JSON.parse(JSON.stringify(strokeToSelect.points))
+                    );
+                    dragStartDataRef.current = {
+                        startMouse: transformedCoords,
+                        originalStrokes,
+                    };
+                } else {
+                    setSelectedStrokeIds([]);
+                }
+                return;
             }
-            return;
-        }
 
-        if (tool === "select") {
-            const selectionBox = getGroupBoundingBox(
-                selectedStrokeIds,
-                currentHistory
-            );
-            if (
-                selectionBox &&
-                isPointInRect(transformedCoords, selectionBox)
-            ) {
-                isDraggingSelectionRef.current = true;
-                const originalStrokes = new Map();
-                selectedStrokeIds.forEach((id) => {
-                    const stroke = currentHistory.find((s) => s.id === id);
-                    if (stroke) {
-                        originalStrokes.set(
-                            id,
-                            JSON.parse(JSON.stringify(stroke.points))
-                        );
-                    }
-                });
-                dragStartDataRef.current = {
-                    startMouse: transformedCoords,
-                    originalStrokes,
-                };
-            } else {
-                setSelectedStrokeIds([]);
-                isSelectingRef.current = true;
-                setLassoPath([transformedCoords]);
+            if (tool === "select") {
+                const selectionBox = getGroupBoundingBox(
+                    selectedStrokeIds,
+                    currentHistory
+                );
+                if (
+                    selectionBox &&
+                    isPointInRect(transformedCoords, selectionBox)
+                ) {
+                    isDraggingSelectionRef.current = true;
+                    const originalStrokes = new Map();
+                    selectedStrokeIds.forEach((id) => {
+                        const stroke = currentHistory.find((s) => s.id === id);
+                        if (stroke) {
+                            originalStrokes.set(
+                                id,
+                                JSON.parse(JSON.stringify(stroke.points))
+                            );
+                        }
+                    });
+                    dragStartDataRef.current = {
+                        startMouse: transformedCoords,
+                        originalStrokes,
+                    };
+                } else {
+                    setSelectedStrokeIds([]);
+                    isSelectingRef.current = true;
+                    setLassoPath([transformedCoords]);
+                }
+                return;
             }
-            return;
-        }
 
-        if (tool === "stroke-eraser") {
-            isStrokeErasingRef.current = true;
-            setHighlightedStrokeId(null);
-            const pathToDelete = getStrokeAtPoint(
-                transformedCoords,
-                currentHistory
-            );
-            setTempDrawingHistory(
-                pathToDelete
-                    ? currentHistory.filter((p) => p.id !== pathToDelete.id)
-                    : currentHistory
-            );
-            return;
-        }
-
-        if (tool === "pen" || tool === "brush-eraser") {
-            isDrawingRef.current = true;
-            if (!isLeftPanelManuallyControlled.current) {
-                setIsLeftPanelOpen(false);
+            if (tool === "stroke-eraser") {
+                isStrokeErasingRef.current = true;
+                setHighlightedStrokeId(null);
+                const pathToDelete = getStrokeAtPoint(
+                    transformedCoords,
+                    currentHistory
+                );
+                setTempDrawingHistory(
+                    pathToDelete
+                        ? currentHistory.filter((p) => p.id !== pathToDelete.id)
+                        : currentHistory
+                );
+                return;
             }
-            const newPath = {
-                id: crypto.randomUUID(),
-                points: [transformedCoords],
-                color: tool === "pen" ? color : "#000000",
-                strokeWidth: strokeWidth,
-                tool: tool,
-            };
-            const newHistory = [...currentHistory, newPath];
-            setDrawingHistory(newHistory);
-            setHistoryIndex(currentHistory.length);
         }
     };
 
@@ -504,7 +593,6 @@ export default function App() {
             setSelectedStrokeIds([]);
         }
 
-        // Auto-show/hide left panel when a drawing tool is selected
         if (!isLeftPanelManuallyControlled.current) {
             if (selectedTool === "pen" || selectedTool === "brush-eraser") {
                 setIsLeftPanelOpen(true);
@@ -513,7 +601,6 @@ export default function App() {
             }
         }
 
-        // If user selects a non-drawing tool, reset the manual control flag
         if (selectedTool !== "pen" && selectedTool !== "brush-eraser") {
             isLeftPanelManuallyControlled.current = false;
         }
@@ -530,6 +617,10 @@ export default function App() {
                 canvasRef.current.style.cursor = "move";
             else canvasRef.current.style.cursor = "crosshair";
         }
+    };
+
+    const handleContextMenu = (event) => {
+        event.preventDefault();
     };
 
     const commonColors = [
@@ -552,6 +643,14 @@ export default function App() {
 
     return (
         <div>
+            <canvas
+                ref={canvasRef}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerLeave={handlePointerLeave}
+                onContextMenu={handleContextMenu}
+            />
             <button
                 className={`panel-toggle left-toggle ${
                     isLeftPanelOpen ? "open" : ""
@@ -636,13 +735,6 @@ export default function App() {
                 />
             </div>
 
-            <canvas
-                ref={canvasRef}
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                onPointerLeave={handlePointerLeave}
-            />
             <div className={`bottom-panel ${isBottomPanelOpen ? "open" : ""}`}>
                 <div className="panel-content">
                     {/* Tool Group */}
@@ -651,94 +743,56 @@ export default function App() {
                             onClick={() => selectTool("pen")}
                             className={tool === "pen" ? "active" : ""}
                             title="Pen">
-                            <svg
+                            <img
+                                src={penIcon}
+                                alt="Pen"
                                 width="24"
                                 height="24"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round">
-                                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                            </svg>
+                            />
                         </button>
                         <button
                             onClick={() => selectTool("move")}
                             className={tool === "move" ? "active" : ""}
                             title="Move Stroke">
-                            <svg
+                            <img
+                                src={strokeMoveIcon}
+                                alt="Move Stroke"
                                 width="24"
                                 height="24"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round">
-                                <path d="M5 9v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9" />
-                                <path d="m9 13 3-3 3 3" />
-                                <path d="M12 10v10" />
-                            </svg>
+                            />
                         </button>
                         <button
                             onClick={() => selectTool("select")}
                             className={tool === "select" ? "active" : ""}
                             title="Lasso Select">
-                            <svg
+                            <img
+                                src={lassoIcon}
+                                alt="Lasso Select"
                                 width="24"
                                 height="24"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round">
-                                <path d="M3.2 8.7C3.2 7 4.7 5.2 6.5 5.2c2.1 0 3.8 1.4 3.8 3.5 0 2.2-1.8 3.5-4 3.5H3.5v3.8h3.8c2.5 0 4.5-1.8 4.5-4.2 0-2.7-2.3-4.8-5-4.8C4.1 4 2 6.1 2 8.7c0 2.3 1.8 4.1 4.1 4.1h2" />
-                                <path d="M14.5 4.2c-1.4 0-2.5 1.1-2.5 2.5s1.1 2.5 2.5 2.5 2.5-1.1 2.5-2.5-1.1-2.5-2.5-2.5z" />
-                                <path d="M11.6 20c-1.8 0-3.2-1.5-3.2-3.2 0-1.8 1.5-3.2 3.2-3.2V20zM14 13.5h7.5v1.8H14zM14 17.1h5.8v1.8H14z" />
-                            </svg>
+                            />
                         </button>
                         <button
                             onClick={() => selectTool("hand")}
                             className={tool === "hand" ? "active" : ""}
                             title="Pan Canvas">
-                            <svg
+                            <img
+                                src={panIcon}
+                                alt="Pan Canvas"
                                 width="24"
                                 height="24"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round">
-                                <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0" />
-                                <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2" />
-                                <path d="M10 9V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v5" />
-                                <path d="M6 14v-1a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0" />
-                                <path d="M18 11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2v0a2 2 0 0 1-2-2v-4" />
-                                <path d="M14 10a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2v0a2 2 0 0 1-2-2v-2" />
-                                <path d="M10 9a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2v0a2 2 0 0 1-2-2v-4" />
-                                <path d="M6 13a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2v0a2 2 0 0 1-2-2v-1" />
-                            </svg>
+                            />
                         </button>
                     </div>
                     <div className="separator"></div>
                     {/* Stroke Width Slider */}
                     <div className="slider-controls">
-                        <svg
+                        <img
+                            src={brushSizeIcon}
+                            alt="Stroke width"
                             width="24"
                             height="24"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="10" />
-                            <circle cx="12" cy="12" r="6" />
-                            <circle cx="12" cy="12" r="2" />
-                        </svg>
+                        />
                         <input
                             type="range"
                             min="1"
@@ -758,38 +812,23 @@ export default function App() {
                             onClick={() => selectTool("brush-eraser")}
                             className={tool === "brush-eraser" ? "active" : ""}
                             title="Brush Eraser">
-                            <svg
+                            <img
+                                src={brushEraserIcon}
+                                alt="Brush Eraser"
                                 width="24"
                                 height="24"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round">
-                                <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21H7Z" />
-                                <path d="M22 21H7" />
-                                <path d="m5 12 5 5" />
-                            </svg>
+                            />
                         </button>
                         <button
                             onClick={() => selectTool("stroke-eraser")}
                             className={tool === "stroke-eraser" ? "active" : ""}
                             title="Stroke Eraser">
-                            <svg
+                            <img
+                                src={strokeEraserIcon}
+                                alt="Stroke Eraser"
                                 width="24"
                                 height="24"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round">
-                                <path d="M14.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9.5L14.5 3Z" />
-                                <polyline points="14 3 14 8 19 8" />
-                                <path d="m9.5 13.5 5 5" />
-                                <path d="m14.5 13.5-5 5" />
-                            </svg>
+                            />
                         </button>
                     </div>
                     <div className="separator"></div>
@@ -799,35 +838,23 @@ export default function App() {
                             onClick={handleUndo}
                             disabled={historyIndex < 0}
                             title="Undo">
-                            <svg
+                            <img
+                                src={undoIcon}
+                                alt="Undo"
                                 width="24"
                                 height="24"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round">
-                                <path d="M3 7v6h6" />
-                                <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
-                            </svg>
+                            />
                         </button>
                         <button
                             onClick={handleRedo}
                             disabled={historyIndex >= drawingHistory.length - 1}
                             title="Redo">
-                            <svg
+                            <img
+                                src={redoIcon}
+                                alt="Redo"
                                 width="24"
                                 height="24"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round">
-                                <path d="M21 7v6h-6" />
-                                <path d="M3 17a9 9 0 0 0 9 9 9 9 0 0 0 6-2.3L21 13" />
-                            </svg>
+                            />
                         </button>
                     </div>
                 </div>
