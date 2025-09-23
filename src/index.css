@@ -11,7 +11,7 @@
 
 body {
     font-family: "Inter", sans-serif;
-    background-color: var(--canvas-bg);
+    background-color: var(--canvas-bg, #111827);
     color: var(--white);
     overflow: hidden;
     width: 100vw;
@@ -28,18 +28,7 @@ canvas {
     touch-action: none;
 }
 
-.bottom-panel {
-    position: fixed;
-    bottom: 0;
-    left: 50%;
-    z-index: 10;
-    transition: transform 0.3s ease-in-out;
-    transform: translate(-50%, 100%);
-}
-.bottom-panel.open {
-    transform: translate(-50%, -1.5rem);
-}
-
+/* --- Panel Base Styles --- */
 .panel-content {
     display: flex;
     align-items: center;
@@ -50,6 +39,18 @@ canvas {
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
     border-radius: 1rem;
     padding: 0.75rem;
+}
+
+.bottom-panel {
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    z-index: 10;
+    transition: transform 0.3s ease-in-out;
+    transform: translate(-50%, 100%); /* Start hidden */
+}
+.bottom-panel.open {
+    transform: translate(-50%, 0); /* Slide in */
 }
 
 .side-panel {
@@ -67,57 +68,25 @@ canvas {
     border-radius: 1rem;
     padding: 0.75rem;
     transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+    pointer-events: none;
+    opacity: 0;
 }
 
 .left-panel {
     left: 1.5rem;
-    transform: translate(-150%, -50%);
-    opacity: 0;
-    pointer-events: none;
+    transform: translate(-100%, -50%); /* Start hidden */
 }
-.left-panel.open {
-    transform: translate(0, -50%);
-    opacity: 1;
-    pointer-events: auto;
-}
-
 .right-panel {
     right: 1.5rem;
-    transform: translate(100%, -50%);
-    opacity: 0;
-    pointer-events: none;
+    transform: translate(100%, -50%); /* Start hidden */
 }
-.right-panel.open {
-    transform: translate(0, -50%);
+.side-panel.open {
+    transform: translate(0, -50%); /* Slide in */
     opacity: 1;
     pointer-events: auto;
 }
 
-.side-panel .color-swatch {
-    width: 2.5rem;
-    height: 2.5rem;
-}
-
-.side-panel input[type="color"] {
-    width: 2.5rem;
-    height: 2.5rem;
-    padding: 0.125rem;
-    background-color: transparent;
-    border: none;
-    border-radius: 9999px;
-    cursor: pointer;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
-}
-.side-panel input[type="color"]::-webkit-color-swatch-wrapper {
-    padding: 0;
-}
-.side-panel input[type="color"]::-webkit-color-swatch {
-    border: none;
-    border-radius: 9999px;
-}
-
+/* --- Panel Toggles --- */
 .panel-toggle {
     position: fixed;
     z-index: 20;
@@ -146,7 +115,6 @@ canvas {
     border-radius: 0 10px 10px 0;
     border-left: none;
 }
-
 .bottom-toggle {
     bottom: 0;
     left: 50%;
@@ -156,11 +124,11 @@ canvas {
     border-radius: 10px 10px 0 0;
     border-bottom: none;
 }
-
 .panel-toggle.open svg {
     transform: rotate(180deg);
 }
 
+/* --- UI Controls --- */
 .control-group {
     display: flex;
     align-items: center;
@@ -181,17 +149,22 @@ canvas {
     align-items: center;
     justify-content: center;
 }
+.control-group button img {
+    transition: opacity 0.2s;
+}
+
 
 .control-group button:hover:not(:disabled) {
     background-color: var(--white-10);
 }
-
 .control-group button.active {
     background-color: var(--blue-600);
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
         0 2px 4px -2px rgba(0, 0, 0, 0.1);
 }
-
+.control-group button.active img {
+    opacity: 1;
+}
 .control-group button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -203,34 +176,52 @@ canvas {
     background-color: var(--white-10);
 }
 
+/* --- Color Swatches --- */
 .color-swatch {
-    width: 2rem;
-    height: 2rem;
+    width: 2.5rem;
+    height: 2.5rem;
     border-radius: 9999px;
     transition: transform 0.2s ease;
     border: none;
     cursor: pointer;
 }
-
 .color-swatch:hover:not(:disabled) {
     transform: scale(1.1);
 }
-
 .color-swatch.active {
     box-shadow: 0 0 0 2px var(--gray-800), 0 0 0 4px var(--white);
 }
-
 .color-swatch:disabled {
     cursor: not-allowed;
     opacity: 0.5;
 }
 
+input[type="color"] {
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0.125rem;
+    background-color: transparent;
+    border: none;
+    border-radius: 9999px;
+    cursor: pointer;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+}
+input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+input[type="color"]::-webkit-color-swatch {
+    border: none;
+    border-radius: 9999px;
+}
+
+/* --- Slider --- */
 .slider-controls {
     display: flex;
     align-items: center;
     gap: 0.75rem;
 }
-
 .slider-controls .slider-value {
     font-size: 0.875rem;
     width: 2rem;
@@ -244,96 +235,7 @@ input[type="range"] {
     width: 8rem;
     cursor: pointer;
 }
-
 input[type="range"]:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-}
-
-/* Styles for Custom Context Menu */
-.context-menu {
-    position: fixed;
-    z-index: 100;
-    background-color: rgba(41, 51, 65, 0.8);
-    backdrop-filter: blur(10px);
-    border-radius: 12px;
-    border: 1px solid var(--white-10);
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
-    display: flex;
-    align-items: center;
-    padding: 1rem;
-    gap: 1rem;
-    transform: translate(-50%, -50%); /* Center on cursor */
-}
-
-.context-menu-slider {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-}
-
-.context-menu-value {
-    font-size: 12px;
-    background-color: var(--gray-900-50);
-    padding: 2px 6px;
-    border-radius: 4px;
-    min-width: 20px;
-    text-align: center;
-}
-
-.context-menu-buttons {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.context-menu-buttons button {
-    background-color: transparent;
-    border: none;
-    padding: 8px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.context-menu-buttons button:hover {
-    background-color: var(--white-10);
-}
-
-.context-menu-buttons button.active {
-    background-color: var(--blue-600);
-}
-
-/* Vertical slider style */
-.vertical-slider {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 80px;
-    height: 6px;
-    background: var(--gray-800);
-    outline: none;
-    border-radius: 3px;
-    transform: rotate(-90deg);
-}
-
-.vertical-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    background: var(--white);
-    cursor: pointer;
-    border-radius: 50%;
-}
-
-.vertical-slider::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    background: var(--white);
-    cursor: pointer;
-    border-radius: 50%;
 }
