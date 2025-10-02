@@ -1,5 +1,3 @@
-DrawingCanvas.jsx;
-
 // DrawingCanvas.jsx
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
@@ -19,9 +17,9 @@ import redoIcon from "./assets/icons/redo.svg";
 const SAVE_TO_LOCALSTORAGE = false;
 const LOCAL_STORAGE_KEY = "drawing-board-data";
 
-// Annotate खोलते वक्त डिफ़ॉल्ट transparency:
-// true => डिफ़ॉल्ट transparent overlay
-// false => डिफ़ॉल्ट solid background
+// Annotate खोलते वक्त डिफ़ॉल्ट transparency:
+// true => डिफ़ॉल्ट transparent overlay
+// false => डिफ़ॉल्ट solid background
 export const SET_BG_DEFAULT_TRANSPARENT = true;
 
 // Solid BG भरते समय कितना opaque?
@@ -55,16 +53,7 @@ export default function DrawingCanvas({
         }
     });
 
-    // Canvas BG (normal mode) + pan
-    const [canvasColor, setCanvasColor] = useState(() => {
-        if (!SAVE_TO_LOCALSTORAGE) return "#111827";
-        try {
-            const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-            return saved ? JSON.parse(saved).canvasColor : "#111827";
-        } catch {
-            return "#111827";
-        }
-    });
+    // Pan
     const [panOffset, setPanOffset] = useState(() => {
         if (!SAVE_TO_LOCALSTORAGE) return { x: 0, y: 0 };
         try {
@@ -75,10 +64,20 @@ export default function DrawingCanvas({
         }
     });
 
-    // Solid BG toggle + color (overlay/transparent mode में भी)
-    // डिफ़ॉल्ट: अगर transparent=true आया है तो solid OFF; वरना solid ON
-    const [bgSolid, setBgSolid] = useState(!transparent);
-    const [bgSolidColor, setBgSolidColor] = useState("#111827");
+    // Unified Background State
+    const [bgMode, setBgMode] = useState(transparent ? "off" : "opaque-solid");
+    const [bgColor, setBgColor] = useState(() => {
+        if (!SAVE_TO_LOCALSTORAGE) return "#111827";
+        try {
+            const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+            // Using 'canvasColor' for backward compatibility with old saves
+            return saved
+                ? JSON.parse(saved).bgColor || JSON.parse(saved).canvasColor
+                : "#111827";
+        } catch {
+            return "#111827";
+        }
+    });
 
     // Pen
     const [color, setColor] = useState("#FFFFFF");
@@ -110,7 +109,8 @@ export default function DrawingCanvas({
             const stateToSave = {
                 drawingHistory,
                 historyIndex,
-                canvasColor,
+                bgColor, // Updated
+                bgMode, // Updated
                 panOffset,
             };
             localStorage.setItem(
@@ -118,12 +118,12 @@ export default function DrawingCanvas({
                 JSON.stringify(stateToSave)
             );
         }
-    }, [drawingHistory, historyIndex, canvasColor, panOffset]);
+    }, [drawingHistory, historyIndex, bgColor, bgMode, panOffset]);
 
     // Body styles: केवल normal mode में ही (transparent overlay में नहीं)
     useEffect(() => {
         if (transparent) return;
-        document.body.style.backgroundColor = canvasColor;
+        document.body.style.backgroundColor = bgColor;
         document.body.style.color = "#ffffff";
         document.body.style.margin = "0";
         document.body.style.padding = "0";
@@ -131,67 +131,75 @@ export default function DrawingCanvas({
         document.body.style.width = "100vw";
         document.body.style.height = "100vh";
         document.body.style.transition = "background-color 0.3s ease";
-    }, [canvasColor, transparent]);
+    }, [bgColor, transparent]);
 
     const redrawCanvas = useCallback(() => {
         const canvas = canvasRef.current;
         const context = contextRef.current;
         if (!canvas || !context) return;
 
-        const canvasWidth = canvas.width / window.devicePixelRatio;
-        const canvasHeight = canvas.height / window.devicePixelRatio;
+        const dpr = window.devicePixelRatio || 1;
+        const canvasWidth = canvas.width / dpr;
+        const canvasHeight = canvas.height / dpr;
 
-        // Always clear
+        // --- New Unified Background Drawing Logic ---
         context.clearRect(0, 0, canvasWidth, canvasHeight);
 
-        // BG fill rules:
-        // 1) bgSolid ON => solid color with alpha = SET_TRANSPARENCY (overlay और normal दोनों में)
-        // 2) bgSolid OFF && !transparent => normal mode background color fill
-        // 3) bgSolid OFF && transparent => no fill (pure overlay)
-        // BG fill rules:
-        if (bgSolid) {
-            context.globalCompositeOperation = "source-over"; // safety
-            context.fillStyle = withAlpha(bgSolidColor, SET_TRANSPARENCY);
-            context.fillRect(0, 0, canvasWidth, canvasHeight);
-        } else if (!transparent) {
-            context.globalCompositeOperation = "source-over";
-            context.fillStyle = canvasColor;
-            context.fillRect(0, 0, canvasWidth, canvasHeight);
-        } else {
-            // Transparent overlay mode
-            if (SET_TRANSPARENCY > 0) {
-                context.globalCompositeOperation = "source-over";
-                context.fillStyle = `rgba(0,0,0,${SET_TRANSPARENCY})`; // black tint
+        switch (bgMode) {
+            case "transparent-solid":
+                context.fillStyle = withAlpha(bgColor, SET_TRANSPARENCY);
                 context.fillRect(0, 0, canvasWidth, canvasHeight);
-            }
-            // SET_TRANSPARENCY === 0 => DON'T FILL AT ALL (pure transparent)
+                break;
+            case "opaque-solid":
+                context.fillStyle = bgColor;
+                context.fillRect(0, 0, canvasWidth, canvasHeight);
+                break;
+            case "off":
+                // In standalone mode, 'off' reverts to a default dark color
+                // to avoid a blank white page.
+                if (!transparent) {
+                    context.fillStyle = "#111827";
+                    context.fillRect(0, 0, canvasWidth, canvasHeight);
+                }
+                // In overlay mode (transparent=true), we do nothing, leaving it clear.
+                break;
         }
+        // --- End of Background Logic ---
 
-        context.save();
-        context.translate(panOffset.x, panOffset.y);
+        const offscreenCanvas = document.createElement("canvas");
+        offscreenCanvas.width = canvas.width;
+        offscreenCanvas.height = canvas.height;
+        const offscreenContext = offscreenCanvas.getContext("2d");
+        if (!offscreenContext) return;
+
+        offscreenContext.scale(dpr, dpr);
+        offscreenContext.lineCap = "round";
+        offscreenContext.lineJoin = "round";
 
         const historyToDraw =
             tempDrawingHistory ?? drawingHistory.slice(0, historyIndex + 1);
 
-        // Draw strokes
         historyToDraw.forEach((path) => {
-            context.beginPath();
-            context.strokeStyle = path.color;
-            context.lineWidth = path.strokeWidth;
-            context.globalCompositeOperation =
+            offscreenContext.beginPath();
+            offscreenContext.strokeStyle = path.color;
+            offscreenContext.lineWidth = path.strokeWidth;
+            offscreenContext.globalCompositeOperation =
                 path.tool === "brush-eraser"
                     ? "destination-out"
                     : "source-over";
             if (path.points.length > 0) {
-                context.moveTo(path.points[0].x, path.points[0].y);
+                offscreenContext.moveTo(path.points[0].x, path.points[0].y);
                 path.points.forEach((point) =>
-                    context.lineTo(point.x, point.y)
+                    offscreenContext.lineTo(point.x, point.y)
                 );
-                context.stroke();
+                offscreenContext.stroke();
             }
         });
 
-        // Highlight for move / stroke eraser
+        context.save();
+        context.translate(panOffset.x, panOffset.y);
+        context.drawImage(offscreenCanvas, 0, 0, canvasWidth, canvasHeight);
+
         const shouldHighlight =
             (highlightedStrokeId &&
                 !isStrokeErasingRef.current &&
@@ -217,7 +225,6 @@ export default function DrawingCanvas({
             }
         }
 
-        // Selection rect
         if (selectedStrokeIds.length > 0) {
             const box = getGroupBoundingBox(selectedStrokeIds, historyToDraw);
             if (box) {
@@ -229,7 +236,6 @@ export default function DrawingCanvas({
             }
         }
 
-        // Lasso path
         if (lassoPath && lassoPath.length > 0) {
             context.strokeStyle = "rgba(0, 150, 255, 0.9)";
             context.lineWidth = 1;
@@ -251,10 +257,9 @@ export default function DrawingCanvas({
         selectedStrokeIds,
         tool,
         lassoPath,
-        canvasColor,
         transparent,
-        bgSolid,
-        bgSolidColor,
+        bgMode,
+        bgColor,
     ]);
 
     // Canvas init & resize
@@ -377,11 +382,16 @@ export default function DrawingCanvas({
     };
 
     const applyBgPanelColor = (c) => {
-        if (bgSolid) setBgSolidColor(c);
-        else setCanvasColor(c);
+        setBgColor(c);
     };
 
-    // Re-draw
+    const handleBgModeToggle = () => {
+        setBgMode((currentMode) => {
+            if (currentMode === "off") return "transparent-solid";
+            if (currentMode === "transparent-solid") return "opaque-solid";
+            return "off"; // From 'opaque-solid' back to 'off'
+        });
+    };
 
     // Panel toggles
     const handleToggleLeftPanel = () => {
@@ -781,17 +791,19 @@ export default function DrawingCanvas({
                 </svg>
             </button>
 
-            {/* Solid BG Toggle (no inline color picker; color right panel se) */}
+            {/* Solid BG Toggle */}
             <div className="fixed z-50 top-4 left-14 flex items-center gap-2">
                 <button
-                    onClick={() => setBgSolid((v) => !v)}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium shadow ${
-                        bgSolid
-                            ? "bg-blue-600 text-white"
-                            : "bg-white/90 text-slate-900"
+                    onClick={handleBgModeToggle}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium shadow w-32 text-center transition-colors ${
+                        bgMode === "off"
+                            ? "bg-white/90 text-slate-900"
+                            : "bg-blue-600 text-white"
                     }`}
-                    title="Toggle Solid Background">
-                    {bgSolid ? "BG: On" : "BG: Off"}
+                    title="Toggle Background Mode">
+                    {bgMode === "off" && "BG: Off"}
+                    {bgMode === "transparent-solid" && "BG: Transparent"}
+                    {bgMode === "opaque-solid" && "BG: Solid"}
                 </button>
             </div>
 
@@ -828,14 +840,14 @@ export default function DrawingCanvas({
                 />
             </div>
 
-            {/* Right (canvas bg) panel — shows on: hand tool in normal mode OR bgSolid = true */}
+            {/* Right (canvas bg) panel */}
             <div
                 className={[
                     "fixed z-10 right-6 top-1/2 -translate-y-1/2",
                     "flex flex-col items-center gap-3",
                     "bg-slate-800/50 backdrop-blur-xl border border-white/10 shadow-2xl rounded-xl p-3",
                     "transition-all duration-300",
-                    (tool === "hand" && !transparent) || bgSolid
+                    bgMode !== "off"
                         ? "opacity-100 pointer-events-auto translate-x-0"
                         : "opacity-0 pointer-events-none translate-x-[150%]",
                 ].join(" ")}>
@@ -845,7 +857,7 @@ export default function DrawingCanvas({
                         onClick={() => applyBgPanelColor(c)}
                         style={{ backgroundColor: c }}
                         className={`w-10 h-10 rounded-full ${
-                            (bgSolid ? bgSolidColor : canvasColor) === c
+                            bgColor === c
                                 ? "ring-4 ring-white ring-offset-2 ring-offset-slate-800"
                                 : ""
                         }`}
@@ -854,7 +866,7 @@ export default function DrawingCanvas({
                 ))}
                 <input
                     type="color"
-                    value={bgSolid ? bgSolidColor : canvasColor}
+                    value={bgColor}
                     onChange={(e) => applyBgPanelColor(e.target.value)}
                     title="Pick Background Color"
                     className="w-10 h-10 p-0 rounded-full border-0 cursor-pointer appearance-none"
@@ -866,7 +878,7 @@ export default function DrawingCanvas({
                 className={[
                     "fixed bottom-4 left-1/2 -translate-x-1/2 z-10",
                     "transition-transform duration-300",
-                    isBottomPanelOpen ? "translate-y-0" : "translate-y-[100%]",
+                    isBottomPanelOpen ? "translate-y-0" : "translate-y-[120%]",
                 ].join(" ")}>
                 <div className="flex items-center gap-4 bg-slate-800/50 backdrop-blur-xl border border-white/10 shadow-2xl rounded-xl p-3">
                     {/* Tool Group */}
